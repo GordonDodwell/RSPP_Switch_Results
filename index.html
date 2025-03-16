@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>RSPPHD Template Switching Results</title>
+  <style>
+    /* ==================== SPINNER STYLES ==================== */
+    /* Center spinner in the page */
+    #spinnerContainer {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background-color: rgba(0, 0, 0, 0.6); /* semi-transparent overlay */
+      z-index: 9999; /* on top of everything */
+    }
+
+    /* A basic "border" spinner */
+    .spinner {
+      width: 50px;
+      height: 50px;
+      border: 6px solid #ccc;         /* Light grey border */
+      border-top: 6px solid #1e90ff;  /* Blue top border (acts like a highlight) */
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0%   { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    /* ==================== PAGE STYLES ==================== */
+    body {
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background-color: #333; 
+      font-family: Arial, sans-serif;
+      color: #eee;
+    }
+
+    .title {
+      color: #eee;
+      margin: 30px 0;
+      font-weight: bold;
+    }
+
+    .tab {
+      background-color: #444; 
+      border-radius: 10px;
+      margin: 20px 0; 
+      transition: all 0.3s ease-in-out;
+      display: inline-block; 
+      overflow: hidden;
+    }
+
+    .tab button {
+      background-color: inherit;
+      float: left;
+      border: none;
+      outline: none;
+      cursor: pointer;
+      padding: 14px 20px;
+      transition: 0.3s;
+      font-size: 17px;
+      border-radius: 0; 
+      color: #151515;
+      font-weight: 600;
+    }
+
+    .tab button:hover {
+      background-color: #555;
+      color: #999;
+    }
+
+    .tab button.active {
+      background-color: #777;
+      color: #eee;
+    }
+
+    .canvas-container {
+      width: 90vw;      /* container dimension in CSS pixels */
+      max-width: 90vw;
+      position: relative;
+      display: block;
+      margin: 1rem auto;
+      cursor: grab;
+      transition: opacity 0.1s ease-in-out;
+    }
+
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      border: 2px solid #2c2c2c;
+      /* We'll let JS set width/height in style & attribute */
+    }
+  </style>
+</head>
+<body>
+  <!-- SPINNER OVERLAY (hidden after images load) -->
+  <div id="spinnerContainer">
+    <div class="spinner"></div>
+  </div>
+
+  <h1 class="title">RSPPHD Template Switching Results</h1>
+
+  <!-- We'll hide these at first with "display: none" -->
+  <div class="tab" id="tabsContainer" style="display: none;">
+    <button id="btnTemp" class="tablinks active">Temporal Trials</button>
+    <button id="btnStay" class="tablinks">Stay Trials</button>
+    <button id="btnSwitch" class="tablinks">Switch Trials</button>
+  </div>
+
+  <div class="canvas-container" id="canvasContainer" style="display: none;">
+    <canvas id="canvasSet1" style="opacity: 0;"></canvas>
+    <canvas id="canvasSet2"></canvas>
+  </div>
+
+  <script>
+    let canvas1 = document.getElementById("canvasSet1");
+    let ctx1 = canvas1.getContext("2d");
+    let canvas2 = document.getElementById("canvasSet2");
+    let ctx2 = canvas2.getContext("2d");
+    let canvasContainer = document.getElementById("canvasContainer");
+
+    let allImages = {};
+    let imagesSet1 = [];
+    let imagesSet2 = [];
+
+    let currentFrame = 0;
+    let totalImages = 1;
+    let isDragging = false;
+    let startX = 0;
+    let dragDistance = 0;
+    let isIsolated = false;
+
+    // ==================== FETCH & PRE-LOAD IMAGES ====================
+
+    async function fetchImageLists() {
+      try {
+        const response = await fetch("images.json");
+        const data = await response.json();
+
+        // We'll store promises for each set's images
+        for (let setKey in data) {
+          const { path, images } = data[setKey];
+          
+          // Map each filename to a promise that resolves when that image is loaded
+          const imagePromises = images.map(filename => {
+            return new Promise((resolve, reject) => {
+              let img = new Image();
+              img.src = path + filename;
+              img.onload = () => resolve(img);
+              img.onerror = reject;
+            });
+          });
+
+          // Wait for all images in this set
+          allImages[setKey] = await Promise.all(imagePromises); 
+        }
+
+        // By here, all images for each set are fully loaded
+        imagesSet1 = allImages["set1"];
+        imagesSet2 = allImages["set2"];
+        totalImages = imagesSet1.length;
+
+        // Hide spinner, show the main UI
+        document.getElementById("spinnerContainer").style.display = "none";
+        document.getElementById("tabsContainer").style.display = "inline-block";
+        document.getElementById("canvasContainer").style.display = "block";
+
+        updateCanvasSize();
+        drawImages();
+      } catch (error) {
+        console.error("Error loading image lists:", error);
+      }
+    }
+
+    // ==================== SWITCH SETS ====================
+
+    function switchSets(pair) {
+      let oldFraction = 0;
+      if (totalImages > 1) {
+        oldFraction = currentFrame / (totalImages - 1);
+      }
+
+      if (pair === "temp") {
+        imagesSet1 = allImages["set1"];
+        imagesSet2 = allImages["set2"];
+      } else if (pair === "stay") {
+        imagesSet1 = allImages["set3"];
+        imagesSet2 = allImages["set4"];
+      } else if (pair === "switch") {
+        imagesSet1 = allImages["set5"];
+        imagesSet2 = allImages["set6"];
+      }
+
+      totalImages = imagesSet1.length;
+      if (totalImages > 1) {
+        currentFrame = oldFraction * (totalImages - 1);
+      } else {
+        currentFrame = 0;
+      }
+      drawImages();
+    }
+
+    function setActiveButton(clickedBtn) {
+      document.querySelectorAll('.tablinks').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      clickedBtn.classList.add('active');
+    }
+
+    // ==================== RESIZING (DPR-AWARE) ====================
+    function updateCanvasSize() {
+      // Device pixel ratio for sharper rendering on mobile
+      let dpr = window.devicePixelRatio || 1;
+      
+      // Maintain 3:1 aspect ratio (4050/1350)
+      let aspectRatio = 4050 / 1350; // =3
+      let maxWidth = window.innerWidth * 0.9;
+      let maxHeight = window.innerHeight * 0.6;
+      
+      let newWidth = maxWidth;
+      let newHeight = newWidth / aspectRatio;
+
+      // Enforce maxHeight if needed
+      if (newHeight > maxHeight) {
+        newHeight = maxHeight;
+        newWidth = newHeight * aspectRatio;
+      }
+
+      // 1) Set the *CSS* size of the canvas (visual size)
+      canvas1.style.width = newWidth + "px";
+      canvas1.style.height = newHeight + "px";
+      canvas2.style.width = newWidth + "px";
+      canvas2.style.height = newHeight + "px";
+
+      // 2) Set the *actual* drawing buffer size
+      canvas1.width = newWidth * dpr;
+      canvas1.height = newHeight * dpr;
+      canvas2.width = newWidth * dpr;
+      canvas2.height = newHeight * dpr;
+
+      // 3) Reset transform, then scale by DPR so drawing coords == CSS pixels
+      ctx1.setTransform(1, 0, 0, 1, 0, 0);
+      ctx2.setTransform(1, 0, 0, 1, 0, 0);
+
+      ctx1.scale(dpr, dpr);
+      ctx2.scale(dpr, dpr);
+
+      drawImages();
+    }
+
+    // ==================== DRAW ====================
+
+    function drawImages() {
+      let index = Math.floor(currentFrame);
+      let alpha = currentFrame - index;
+
+      ctx1.clearRect(0, 0, canvas1.width, canvas1.height);
+      ctx2.clearRect(0, 0, canvas2.width, canvas2.height);
+
+      if (!imagesSet1[index] || !imagesSet2[index]) return;
+
+      let currentImg1 = imagesSet1[index];
+      let currentImg2 = imagesSet2[index];
+
+      // If we're at the last index, just draw them fully
+      if (index >= imagesSet1.length - 1) {
+        ctx1.globalAlpha = 1;
+        ctx1.drawImage(currentImg1, 0, 0, canvas1.width / (window.devicePixelRatio || 1), canvas1.height / (window.devicePixelRatio || 1));
+        ctx2.globalAlpha = 1;
+        ctx2.drawImage(currentImg2, 0, 0, canvas2.width / (window.devicePixelRatio || 1), canvas2.height / (window.devicePixelRatio || 1));
+        return;
+      }
+
+      let nextImg1 = imagesSet1[index + 1];
+      let nextImg2 = imagesSet2[index + 1];
+
+      let transitionStart = 0.7;
+      let transitionEnd = 1.0;
+
+      if (alpha < transitionStart) {
+        // Show current images fully
+        ctx1.globalAlpha = 1;
+        ctx1.drawImage(currentImg1, 0, 0, canvas1.width / (window.devicePixelRatio || 1), canvas1.height / (window.devicePixelRatio || 1));
+        ctx2.globalAlpha = 1;
+        ctx2.drawImage(currentImg2, 0, 0, canvas2.width / (window.devicePixelRatio || 1), canvas2.height / (window.devicePixelRatio || 1));
+      } else {
+        // Blend in next image
+        let blendAlpha = (alpha - transitionStart) / (transitionEnd - transitionStart);
+
+        ctx1.globalAlpha = 1;
+        ctx1.drawImage(currentImg1, 0, 0, canvas1.width / (window.devicePixelRatio || 1), canvas1.height / (window.devicePixelRatio || 1));
+        ctx2.globalAlpha = 1;
+        ctx2.drawImage(currentImg2, 0, 0, canvas2.width / (window.devicePixelRatio || 1), canvas2.height / (window.devicePixelRatio || 1));
+
+        ctx1.globalAlpha = blendAlpha;
+        ctx1.drawImage(nextImg1, 0, 0, canvas1.width / (window.devicePixelRatio || 1), canvas1.height / (window.devicePixelRatio || 1));
+        ctx2.globalAlpha = blendAlpha;
+        ctx2.drawImage(nextImg2, 0, 0, canvas2.width / (window.devicePixelRatio || 1), canvas2.height / (window.devicePixelRatio || 1));
+      }
+    }
+
+    // ==================== DRAG SCRUBBING ====================
+
+    function startDrag(event) {
+      isDragging = true;
+      startX = event.touches ? event.touches[0].clientX : event.clientX;
+      dragDistance = 0;
+      canvasContainer.style.cursor = "grabbing";
+    }
+
+    function moveDrag(event) {
+      if (!isDragging) return;
+      let currentX = event.touches ? event.touches[0].clientX : event.clientX;
+      let deltaX = currentX - startX;
+      dragDistance += Math.abs(deltaX);
+
+      let containerWidth = canvasContainer.clientWidth;
+      let framesRange = imagesSet1.length - 1; 
+      if (framesRange < 1) return;
+
+      let fractionDelta = deltaX / containerWidth;
+      let scrubSensitivity = 1.4; 
+      fractionDelta *= scrubSensitivity;
+
+      currentFrame += fractionDelta * framesRange;
+      if (currentFrame < 0) currentFrame = 0;
+      if (currentFrame > framesRange) currentFrame = framesRange;
+
+      drawImages();
+      startX = currentX;
+    }
+
+    function endDrag() {
+      isDragging = false;
+      canvasContainer.style.cursor = "grab";
+    }
+
+    // ==================== CLICK TO TOGGLE ISOLATION ====================
+
+    function toggleIsolation() {
+      // Only toggle if the user didn't drag far
+      if (dragDistance < 5) {
+        isIsolated = !isIsolated;
+        canvas1.style.opacity = isIsolated ? "1" : "0";
+        canvas2.style.opacity = isIsolated ? "0" : "1";
+        canvasContainer.style.opacity = "0.7";
+        setTimeout(() => {
+          canvasContainer.style.opacity = "1";
+        }, 100);
+      }
+    }
+
+    // ==================== EVENT LISTENERS ====================
+
+    canvasContainer.addEventListener("mousedown", startDrag);
+    canvasContainer.addEventListener("mousemove", moveDrag);
+    canvasContainer.addEventListener("mouseup", endDrag);
+    canvasContainer.addEventListener("click", toggleIsolation);
+
+    canvasContainer.addEventListener("touchstart", startDrag);
+    canvasContainer.addEventListener("touchmove", moveDrag);
+    canvasContainer.addEventListener("touchend", endDrag);
+    canvasContainer.addEventListener("touchend", toggleIsolation);
+
+    window.addEventListener("resize", updateCanvasSize);
+
+    document.getElementById("btnTemp").addEventListener("click", function() {
+      switchSets("temp");
+      setActiveButton(this);
+    });
+    document.getElementById("btnStay").addEventListener("click", function() {
+      switchSets("stay");
+      setActiveButton(this);
+    });
+    document.getElementById("btnSwitch").addEventListener("click", function() {
+      switchSets("switch");
+      setActiveButton(this);
+    });
+
+    // ==================== FETCH & START ====================
+    fetchImageLists();
+  </script>
+</body>
+</html>
