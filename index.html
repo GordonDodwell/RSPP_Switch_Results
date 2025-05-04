@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>RSPPHD Template Switching Results</title>
+  <title>RSPP - Switching Templates: Results</title>
   <style>
     /* ==================== SPINNER STYLES ==================== */
     /* Center spinner in the page */
@@ -100,28 +100,38 @@
       top: 0;
       left: 0;
       border: 2px solid #2c2c2c;
-      /* We'll let JS set width/height in style & attribute */
     }
   </style>
 </head>
 <body>
   <!-- SPINNER OVERLAY (hidden after images load) -->
-  <div id="spinnerContainer">
+  <div id="spinnerContainer" style="display: flex; flex-direction: column; justify-content: center; align-items: center; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.6); z-index: 9999;">
     <div class="spinner"></div>
+    <p style="margin-top: 10px;">Loading images, please wait...</p>
   </div>
 
-  <h1 class="title">RSPPHD Template Switching Results</h1>
+  <h1 class="title">RSPP - Switching Templates: Results</h1>
 
-  <!-- We'll hide these at first with "display: none" -->
   <div class="tab" id="tabsContainer" style="display: none;">
-    <button id="btnTemp" class="tablinks active">Temporal Trials</button>
-    <button id="btnStay" class="tablinks">Stay Trials</button>
-    <button id="btnSwitch" class="tablinks">Switch Trials</button>
+    <button id="btnTemp" class="tablinks active">Exp. 1</button>
+    <button id="btnStay" class="tablinks">Exp. 2: Stay</button>
+    <button id="btnSwitch" class="tablinks">Exp. 2: Switch</button>
   </div>
 
   <div class="canvas-container" id="canvasContainer" style="display: none;">
     <canvas id="canvasSet1" style="opacity: 0;"></canvas>
     <canvas id="canvasSet2"></canvas>
+  </div>
+
+  <!-- Usage instructions -->
+  <div id="figureUsage" style="display: none; max-width: 700px; margin: 1rem auto; text-align: left;">
+    <p style="font-weight: bold; margin-bottom: 0.5em; text-align: center;">this figure is interactive!</p>
+    <ul style="list-style-type: disc; padding-left: 1.5em;">
+      <li>drag to the left and right to move between each probe</li>
+      <li>drag to the far right to reveal the complete sequence</li>
+      <li>click on the figure to toggle between probe colours</li>
+      <li>use the buttons above to switch between conditions</li>
+    </ul>
   </div>
 
   <script>
@@ -149,7 +159,7 @@
         const response = await fetch("images.json");
         const data = await response.json();
 
-        // We'll store promises for each set's images
+        // Store promises for each set's images
         for (let setKey in data) {
           const { path, images } = data[setKey];
           
@@ -176,6 +186,7 @@
         document.getElementById("spinnerContainer").style.display = "none";
         document.getElementById("tabsContainer").style.display = "inline-block";
         document.getElementById("canvasContainer").style.display = "block";
+        document.getElementById("figureUsage").style.display = "block";
 
         updateCanvasSize();
         drawImages();
@@ -225,7 +236,7 @@
       let dpr = window.devicePixelRatio || 1;
       
       // Maintain 3:1 aspect ratio (4050/1350)
-      let aspectRatio = 4050 / 1350; // =3
+      let aspectRatio = 3; // 4050 / 1350 = 3
       let maxWidth = window.innerWidth * 0.9;
       let maxHeight = window.innerHeight * 0.6;
       
@@ -243,6 +254,12 @@
       canvas1.style.height = newHeight + "px";
       canvas2.style.width = newWidth + "px";
       canvas2.style.height = newHeight + "px";
+
+
+      // 2) also size the container so it has actual height
+      let container = document.getElementById("canvasContainer");
+      container.style.width = newWidth + "px";
+      container.style.height = newHeight + "px";
 
       // 2) Set the *actual* drawing buffer size
       canvas1.width = newWidth * dpr;
